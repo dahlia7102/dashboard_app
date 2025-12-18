@@ -1,49 +1,54 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // axios import 추가
-import logo from './logo.svg';
 import './App.css';
 
 function App() {
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState(null);
+  const [dashboardState, setDashboardState] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    axios.get('/api/test') // fetch 대신 axios.get 사용
-      .then(response => { // response 객체 구조가 fetch와 다름
-        setMessage(response.data.message);
-      })
-      .catch(error => {
-        console.error('Error fetching data:', error);
-        if (error.response) {
-          // 서버에서 응답이 왔지만 상태 코드가 2xx 범위 밖인 경우
-          setError(`Server error: ${error.response.status} - ${error.response.data.message || error.message}`);
-        } else if (error.request) {
-          // 요청이 전송되었지만 응답을 받지 못한 경우 (네트워크 오류 등)
-          setError('Network error: No response from server.');
-        } else {
-          // 요청 설정 중 오류가 발생한 경우
-          setError(`Request error: ${error.message}`);
-        }
-      });
-  }, []);
+    // WebSocket URL, it should point to the integrated server
+    const wsUrl = 'ws://localhost:5000';
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('WebSocket connection established');
+      setIsConnected(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setDashboardState(data);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
+      setIsConnected(false);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setIsConnected(false);
+    };
+
+    // Cleanup function to close the connection when the component unmounts
+    return () => {
+      ws.close();
+    };
+  }, []); // Empty dependency array means this effect runs once on mount
 
   return (
     <div className="App">
       <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>{message ? message : 'Loading...'}</p>
-        {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
+        <h1>Dashboard</h1>
+        <p>WebSocket Connection Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
+        <div style={{ textAlign: 'left', width: '80%', margin: '20px auto', backgroundColor: '#222', padding: '15px', borderRadius: '8px' }}>
+          <h2>Live System State:</h2>
+          <pre>{dashboardState ? JSON.stringify(dashboardState, null, 2) : 'Waiting for data...'}</pre>
+        </div>
       </header>
     </div>
   );
