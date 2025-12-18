@@ -37,6 +37,18 @@ const SystemStatusWidget = ({ state }) => {
   return (
     <Card title="System Overall Status" style={{ height: '100%' }}>
       <Descriptions column={1} layout="horizontal" bordered>
+        <Descriptions.Item label="Total Log Lines">
+          {state.global.totalLogLines.toLocaleString()}
+        </Descriptions.Item>
+        <Descriptions.Item label="Total Requests">
+          {state.global.totalRequests.toLocaleString()}
+        </Descriptions.Item>
+        <Descriptions.Item label="Total Errors">
+          {state.global.errorCount.toLocaleString()}
+        </Descriptions.Item>
+        <Descriptions.Item label="Last Update">
+          {state.global.lastUpdate ? new Date(state.global.lastUpdate).toLocaleString() : 'N/A'}
+        </Descriptions.Item>
         <Descriptions.Item label="Windows Server">
           {getStatusBadge('active')}
         </Descriptions.Item>

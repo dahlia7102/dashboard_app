@@ -1,5 +1,5 @@
-import React from 'react';
-import { Card, Spin, Tooltip, Tag, Empty, Row, Col } from 'antd'; // Import Row, Col
+import React, { useState } from 'react';
+import { Card, Spin, Tooltip, Tag, Empty, Row, Col, Modal, Descriptions } from 'antd'; // Import Modal and Descriptions
 import { SyncOutlined, CheckCircleOutlined, CloseCircleOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 
 // Removed gridStyle - we'll use Row/Col instead
@@ -28,6 +28,19 @@ const statusConfig = {
 };
 
 const ServerGridWidget = ({ state }) => {
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [selectedCameraData, setSelectedCameraData] = useState(null);
+
+  const showModal = (camera) => {
+    setSelectedCameraData(camera);
+    setIsModalVisible(true);
+  };
+
+  const handleCancel = () => {
+    setIsModalVisible(false);
+    setSelectedCameraData(null);
+  };
+
   if (!state || !state.cameras) {
     return (
       <Card title="Linux Analysis Server Status" style={{ minHeight: '200px' }}>
@@ -60,6 +73,7 @@ const ServerGridWidget = ({ state }) => {
               <Col key={camera.id} xs={24} sm={12} md={8} lg={6} xl={4}> {/* Responsive columns */}
                 <Tooltip title={renderTooltipContent(camera)}>
                   <div 
+                    onClick={() => showModal(camera)} // Add onClick handler
                     style={{
                       backgroundColor: 'rgba(0, 0, 0, 0.2)', // Darker background for each item
                       padding: '10px',
@@ -88,6 +102,28 @@ const ServerGridWidget = ({ state }) => {
           })}
         </Row>
       )}
+
+      {/* Camera Detail Modal */}
+      <Modal
+        title={`Camera Details: ${selectedCameraData?.id || ''}`}
+        visible={isModalVisible}
+        onCancel={handleCancel}
+        footer={null} // No footer buttons
+      >
+        {selectedCameraData && (
+          <Descriptions column={1} bordered>
+            <Descriptions.Item label="ID">{selectedCameraData.id}</Descriptions.Item>
+            <Descriptions.Item label="Status">{statusConfig[selectedCameraData.status]?.text || 'Unknown'}</Descriptions.Item>
+            <Descriptions.Item label="IP">{selectedCameraData.ip || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Last Activity">{selectedCameraData.lastActivity || 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Request Count">{selectedCameraData.requestCount}</Descriptions.Item>
+            <Descriptions.Item label="Error Count">{selectedCameraData.errorCount}</Descriptions.Item>
+            <Descriptions.Item label="Avg. Processing Time">{selectedCameraData.averageProcessingTime ? `${selectedCameraData.averageProcessingTime.toFixed(2)} ms` : 'N/A'}</Descriptions.Item>
+            <Descriptions.Item label="Recent Processing Times">{selectedCameraData.processingTimes && selectedCameraData.processingTimes.length > 0 ? selectedCameraData.processingTimes.join(', ') : 'N/A'}</Descriptions.Item>
+            {/* Add more details as needed */}
+          </Descriptions>
+        )}
+      </Modal>
     </Card>
   );
 };

@@ -86,21 +86,34 @@ const systemState = {
 // WebSocket clients
 const clients = new Set();
 
+let broadcastTimeout = null;
+const BROADCAST_DEBOUNCE_DELAY = 200; // milliseconds
+
 /**
  * Broadcasts the current system state to all connected WebSocket clients.
+ * Debounced to prevent excessive updates.
  */
 function broadcastState() {
   if (clients.size === 0) {
     // console.log("No WebSocket clients connected to broadcast state.");
     return;
   }
-  const stateJson = JSON.stringify(systemState);
-  clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(stateJson);
-    }
-  });
-  // console.log(`Broadcasted state to ${clients.size} clients.`);
+
+  // Clear any existing timeout to debounce
+  if (broadcastTimeout) {
+    clearTimeout(broadcastTimeout);
+  }
+
+  // Set a new timeout to broadcast after a short delay
+  broadcastTimeout = setTimeout(() => {
+    const stateJson = JSON.stringify(systemState);
+    clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(stateJson);
+      }
+    });
+    // console.log(`Broadcasted state to ${clients.size} clients.`);
+  }, BROADCAST_DEBOUNCE_DELAY);
 }
 
 

@@ -13,7 +13,7 @@ const { Header, Content, Footer } = Layout;
 const { Title } = Typography;
 
 function App() {
-  const [dashboardState, setDashboardState] = useState(null);
+  const [dashboardState, setDashboardState] = useState({}); // Initialize as empty object
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -27,10 +27,15 @@ function App() {
 
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        setDashboardState(data);
+        const newData = JSON.parse(event.data);
+        // Perform a shallow comparison to avoid unnecessary re-renders
+        // Only update state if newData is different from current dashboardState
+        if (JSON.stringify(newData) !== JSON.stringify(dashboardState)) { // Simple deep compare
+          setDashboardState(newData);
+        }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
+        console.error('Raw WebSocket message:', event.data); // Log raw message for debugging
       }
     };
 
