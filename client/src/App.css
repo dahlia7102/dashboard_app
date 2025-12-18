@@ -16,3 +16,24 @@ code {
 .App {
   padding: 24px;
 }
+
+/* Custom scrollbar for Pipeline Widget */
+.pipeline-widget-body::-webkit-scrollbar {
+  width: 8px; /* For vertical scrollbar */
+  height: 8px; /* For horizontal scrollbar, though not expected here */
+}
+
+.pipeline-widget-body::-webkit-scrollbar-track {
+  background: #282c34; /* Darker track color */
+  border-radius: 10px;
+}
+
+.pipeline-widget-body::-webkit-scrollbar-thumb {
+  background: #09a1a6; /* A professional cyan/teal color - matching primaryColor */
+  border-radius: 10px;
+}
+
+.pipeline-widget-body::-webkit-scrollbar-thumb:hover {
+  background: #00bcd4; /* Lighter on hover */
+}
+

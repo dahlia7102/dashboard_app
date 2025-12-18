@@ -1,3 +1,10 @@
+process.on('uncaughtException', (err) => {
+  console.error('Unhandled Exception:', err.message);
+  console.error(err.stack);
+  // Optionally, you might want to gracefully close resources before exiting
+  // process.exit(1); // Exit with a failure code
+});
+
 const express = require('express');
 const app = express();
 const port = 5000; // HTTP and WebSocket server will share this port
@@ -72,6 +79,8 @@ const systemState = {
   },
   // 'cameras' will map to the '25 Linux servers' concept, using cameraId from logs
   cameras: {}, // Key: cameraId (e.g., '9/1'), Value: { status, lastActivity, ip, processingTimes, avgProcessingTime }
+  kpiData: [], // New array for time-series KPI data
+  recentLogs: [], // New array for recent parsed log entries
 };
 
 // WebSocket clients
@@ -171,6 +180,13 @@ function updateState(parsedLog) {
     console.log("Updated Camera State:", JSON.stringify(systemState.cameras[parsedLog.cameraId], null, 2));
   }
   
+  // Add parsed log to recentLogs, keeping the array size in check
+  systemState.recentLogs.push(parsedLog);
+  const MAX_RECENT_LOGS = 50; // Keep up to 50 recent logs
+  if (systemState.recentLogs.length > MAX_RECENT_LOGS) {
+    systemState.recentLogs.shift(); // Remove the oldest log
+  }
+  
   // Broadcast state after update
   broadcastState();
 }
@@ -199,19 +215,41 @@ const watcher = chokidar.watch(logFilePath, {
   interval: 1000,   // Poll every 1 second
 });
 
+// Add chokidar event listeners
+console.log(`Setting up watcher for ${logFilePath}...`);
+watcher
+  .on('add', path => {
+    console.log(`File ${path} has been added. Starting to process.`);
+    // On 'add', if it's the initial scan, we want to process the whole file.
+    // If it's a new file, lastReadSize would be 0, so it will process the whole file anyway.
+    processNewData(path, true); // Pass true to force full read
+  })
+  .on('change', path => {
+    processNewData(path);
+  })
+  .on('error', error => console.error(`Watcher error: ${error}`))
+  .on('ready', () => {
+    console.log('Initial scan complete. Ready for changes.');
+    // Explicitly process the existing log file content once upon ready.
+    // We get the path from logFilePath as 'add' event might not always fire for pre-existing files on some systems/setups
+    processNewData(logFilePath, true); // Force full read on ready
+  });
+
 // Function to process new log data from a file path
-const processNewData = (path) => {
+const processNewData = (path, forceFullRead = false) => {
     try {
         const stats = fs.statSync(path);
         const newSize = stats.size;
 
-        if (newSize < lastReadSize) {
-            console.log("Log file truncated. Resetting read position.");
-            lastReadSize = 0;
+        let startByte = lastReadSize;
+        if (forceFullRead || newSize < lastReadSize) {
+            console.log(forceFullRead ? "Force full read." : "Log file truncated. Resetting read position.");
+            startByte = 0;
+            lastReadSize = 0; // Reset lastReadSize after deciding startByte
         }
         
-        if (newSize > lastReadSize) {
-            const stream = fs.createReadStream(path, { start: lastReadSize, end: newSize, encoding: 'utf8' });
+        if (newSize > startByte) {
+            const stream = fs.createReadStream(path, { start: startByte, end: newSize, encoding: 'utf8' });
             let data = '';
             stream.on('data', (chunk) => {
                 data += chunk;
@@ -237,19 +275,6 @@ const processNewData = (path) => {
     }
 };
 
-// Add chokidar event listeners
-console.log(`Setting up watcher for ${logFilePath}...`);
-watcher
-  .on('add', path => {
-    console.log(`File ${path} has been added. Starting to process.`);
-    processNewData(path);
-  })
-  .on('change', path => {
-    processNewData(path);
-  })
-  .on('error', error => console.error(`Watcher error: ${error}`))
-  .on('ready', () => console.log('Initial scan complete. Ready for changes.'));
-
 // --- End of Chokidar Implementation ---
 
 
@@ -274,6 +299,7 @@ wss.on('connection', ws => {
 
   // Send initial state to the new client
   if (ws.readyState === WebSocket.OPEN) {
+    console.log('Sending initial systemState:', JSON.stringify(systemState, null, 2));
     ws.send(JSON.stringify(systemState));
   }
 
@@ -288,3 +314,41 @@ wss.on('connection', ws => {
 });
 
 console.log(`WebSocket server integrated with HTTP server on port ${port}`);
+
+// Aggregate KPI data periodically
+setInterval(() => {
+  let totalRequestsAcrossCameras = 0;
+  let totalProcessingTimeAcrossCameras = 0;
+  let activeCamerasCount = 0;
+
+  Object.values(systemState.cameras).forEach(camera => {
+    totalRequestsAcrossCameras += camera.requestCount;
+    if (camera.averageProcessingTime > 0) {
+      totalProcessingTimeAcrossCameras += camera.averageProcessingTime;
+      activeCamerasCount++;
+    }
+    // Reset requestCount for next minute's aggregation if desired, or keep accumulating
+    // For now, let's accumulate. If 'hourly' means *per hour*, then we need more sophisticated reset logic.
+    // Assuming here that 'hourlyRequests' is a snapshot of total requests observed up to this minute.
+  });
+
+  const currentHourMinute = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  
+  const avgProcessingTimeOverall = activeCamerasCount > 0 
+    ? parseFloat((totalProcessingTimeAcrossCameras / activeCamerasCount).toFixed(2)) 
+    : 0;
+
+  systemState.kpiData.push({
+    name: currentHourMinute,
+    hourlyRequests: totalRequestsAcrossCameras, // This accumulates. Consider resetting or using a different metric for true 'hourly' rate
+    avgProcessingTime: avgProcessingTimeOverall,
+  });
+
+  // Keep only the last 60 data points (e.g., last 60 minutes)
+  if (systemState.kpiData.length > 60) {
+    systemState.kpiData.shift();
+  }
+  console.log('KPI data aggregated and broadcasted.');
+  broadcastState();
+
+}, 60 * 1000); // Every 1 minute

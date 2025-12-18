@@ -90,7 +90,7 @@ function App() {
           </div>
         </Content>
         <Footer style={{ textAlign: 'center' }}>
-          Monitoring Dashboard ©2025 Created with Gemini
+          Monitoring Dashboard ©2025 Created with Me
         </Footer>
       </Layout>
     </ConfigProvider>
