@@ -1,9 +1,10 @@
 const express = require('express');
 const app = express();
-const port = 5000; // Choose a different port than React's default 3000
+const port = 5000; // HTTP and WebSocket server will share this port
 
 const chokidar = require('chokidar');
 const fs = require('fs');
+const WebSocket = require('ws'); // Import WebSocket library
 
 /**
  * Parses a log line to extract structured data.
@@ -72,6 +73,27 @@ const systemState = {
   // 'cameras' will map to the '25 Linux servers' concept, using cameraId from logs
   cameras: {}, // Key: cameraId (e.g., '9/1'), Value: { status, lastActivity, ip, processingTimes, avgProcessingTime }
 };
+
+// WebSocket clients
+const clients = new Set();
+
+/**
+ * Broadcasts the current system state to all connected WebSocket clients.
+ */
+function broadcastState() {
+  if (clients.size === 0) {
+    // console.log("No WebSocket clients connected to broadcast state.");
+    return;
+  }
+  const stateJson = JSON.stringify(systemState);
+  clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(stateJson);
+    }
+  });
+  // console.log(`Broadcasted state to ${clients.size} clients.`);
+}
+
 
 /**
  * Updates the in-memory system state based on a parsed log line.
@@ -148,6 +170,9 @@ function updateState(parsedLog) {
   if(parsedLog.cameraId && systemState.cameras[parsedLog.cameraId]) {
     console.log("Updated Camera State:", JSON.stringify(systemState.cameras[parsedLog.cameraId], null, 2));
   }
+  
+  // Broadcast state after update
+  broadcastState();
 }
 
 
@@ -232,15 +257,34 @@ app.get('/api/test', (req, res) => {
   res.json({ message: 'Hello from Node.js Express Backend!' });
 });
 
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+app.get('/api/state', (req, res) => {
+  res.json(systemState);
 });
 
-
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Hello from Node.js Express Backend!' });
+const server = app.listen(port, () => {
+  console.log(`HTTP server listening on port ${port}`);
 });
 
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+// Create WebSocket server, integrated with the HTTP server
+const wss = new WebSocket.Server({ server });
+
+wss.on('connection', ws => {
+  console.log('Client connected via WebSocket.');
+  clients.add(ws);
+
+  // Send initial state to the new client
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(systemState));
+  }
+
+  ws.on('close', () => {
+    console.log('Client disconnected from WebSocket.');
+    clients.delete(ws);
+  });
+
+  ws.on('error', error => {
+    console.error('WebSocket error:', error);
+  });
 });
+
+console.log(`WebSocket server integrated with HTTP server on port ${port}`);
