@@ -20,14 +20,6 @@ const getLogLevelColor = (level) => {
 
 const PipelineWidget = ({ state }) => {
   const recentLogs = state?.recentLogs || [];
-  const scrollableRef = useRef(null); // Ref for the scrollable area
-
-  // Effect to scroll to bottom when recentLogs change
-  useEffect(() => {
-    if (scrollableRef.current) {
-      scrollableRef.current.scrollTop = scrollableRef.current.scrollHeight;
-    }
-  }, [recentLogs]); // Rerun when recentLogs change
 
   return (
     <Card
@@ -36,7 +28,6 @@ const PipelineWidget = ({ state }) => {
       bodyStyle={{ flex: 1, padding: '10px' }} // bodyStyle only handles flex and padding
     >
       <div // This div will be the scrollable area
-        ref={scrollableRef}
         className="pipeline-widget-body" // Apply custom scrollbar styles here
         style={{ overflowY: 'auto', maxHeight: '324px' }} // Explicit maxHeight in pixels
       >
@@ -49,11 +40,26 @@ const PipelineWidget = ({ state }) => {
                 title={
                   <>
                     <Tag color={getLogLevelColor(log.level)}>{log.level}</Tag>
-                    <Text type="secondary" style={{ marginLeft: 8 }}>{log.timestamp}</Text>
+                    <Text type="secondary" style={{ marginLeft: 8 }}>{new Date(log.timestamp).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</Text>
                   </>
                 }
                 description={
-                  <Text style={{ display: 'block', wordBreak: 'break-word' }}>{log.message}</Text>
+                  (() => {
+                    const message = log.message || '';
+                    const match = message.match(/리눅스: (.*?), .*총: (.*?초)/); // Extract "초" as well
+                    if (match) {
+                      const linuxName = match[1];
+                      const totalTime = match[2].replace('초', 's'); // Replace "초" with "s"
+                      const matchingResult = String(log.matchingResult) || 'N/A';
+                      return (
+                        <Text style={{ display: 'block', wordBreak: 'break-word' }}>
+                          {`Linux: ${linuxName}, Total: ${totalTime}, Matching: ${matchingResult}`}
+                        </Text>
+                      );
+                    }
+                    // Fallback to original message if format is unexpected
+                    return <Text style={{ display: 'block', wordBreak: 'break-word' }}>{message}</Text>;
+                  })()
                 }
               />
               {log.cameraId && <Text type="secondary" style={{ whiteSpace: 'nowrap', marginRight: '5px' }}>Camera: {log.cameraId}</Text>}
