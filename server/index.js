@@ -60,7 +60,7 @@ function broadcastState() {
         client.send(stateJson);
       }
     });
-    // console.log('System state broadcasted to clients.'); // Uncomment for debugging
+    console.log('System state broadcasted to clients.'); // Uncomment for debugging
   }, BROADCAST_DEBOUNCE_DELAY);
 }
 
