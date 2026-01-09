@@ -34,7 +34,6 @@ const systemState = {
     linuxServerDetails: [], // Detailed status for each Linux server
   },
   cameras: {}, // Existing camera data (from log parsing)
-  kpiData: [],
   recentLogs: [],
 };
 
@@ -100,9 +99,9 @@ function updateStateFromLog(ballFindData) {
     raw: `Ball found for PlayID ${ballFindData.playId} on camera ${camId}`,
   };
 
-  systemState.recentLogs.unshift(logEntry); // Add to the beginning of the array
+  systemState.recentLogs.push(logEntry); // Add to the end of the array
   if (systemState.recentLogs.length > 50) {
-    systemState.recentLogs.pop(); // Remove from the end
+    systemState.recentLogs.shift(); // Remove from the beginning (oldest)
   }
   
   broadcastState();
@@ -161,26 +160,7 @@ function updateLinuxHealthStatus(linuxHealthResults) {
 }
 
 
-// --- KPI Aggregation ---
-setInterval(() => {
-    let totalRequestsAcrossCameras = 0;
-    Object.values(systemState.cameras).forEach(camera => {
-        totalRequestsAcrossCameras += camera.requestCount;
-    });
 
-    const currentHourMinute = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    
-    systemState.kpiData.push({
-        name: currentHourMinute,
-        hourlyRequests: totalRequestsAcrossCameras,
-        avgProcessingTime: 0,
-    });
-
-    if (systemState.kpiData.length > 60) {
-        systemState.kpiData.shift();
-    }
-    broadcastState();
-}, 60 * 1000);
 
 
 // --- API Routes ---
