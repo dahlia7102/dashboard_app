@@ -9,6 +9,8 @@ const express = require('express');
 const WebSocket = require('ws');
 const cors = require('cors'); // Import cors middleware
 
+const { exec } = require('child_process');
+
 // --- Custom Modules ---
 const { startLogWatcher } = require('./log-watcher.js');
 const { startHealthChecks, linuxServers } = require('./health-checker.js'); // Import linuxServers
@@ -26,15 +28,15 @@ const systemState = {
     lastUpdate: null,
     windowServerStatus: null,
     nginxStatus: null,
-    // Linux Server Health Status
-    linuxServersTotal: linuxServers.length, // Total number of Linux servers
-    linuxServersOnline: 0, // Count of online servers
-    linuxServersOffline: 0, // Count of offline servers
-    linuxServersIssues: 0, // Count of servers with Zabbix issues (future)
-    linuxServerDetails: [], // Detailed status for each Linux server
+    linuxServersTotal: linuxServers.length,
+    linuxServersOnline: 0,
+    linuxServersOffline: 0,
+    linuxServersIssues: 0,
+    linuxServerDetails: [],
   },
-  cameras: {}, // Existing camera data (from log parsing)
+  cameras: {},
   recentLogs: [],
+  mapImageRequests: {}, // Store GetMapImageRequest data, keyed by playId
 };
 
 // --- WebSocket Management ---
@@ -59,49 +61,79 @@ function broadcastState() {
         client.send(stateJson);
       }
     });
-    console.log('System state broadcasted to clients.'); // Uncomment for debugging
+    console.log('System state broadcasted to clients.');
   }, BROADCAST_DEBOUNCE_DELAY);
 }
 
 // --- State Update Functions ---
 
 /**
- * Updates the in-memory system state based on a parsed 'FindSaveRequest' block.
- * This function is passed as a callback to the log watcher.
- * @param {object} ballFindData - The structured data from a successful ball find log.
+ * Updates the in-memory system state based on parsed log data from the watcher.
+ * @param {object} logObject - An object with `type` and `data` properties.
  */
-function updateStateFromLog(ballFindData) {
+function updateStateFromLog(logObject) {
+  const { type, data } = logObject;
   systemState.global.totalLogLines++;
-  systemState.global.lastUpdate = ballFindData.timestamp;
+  systemState.global.lastUpdate = data.timestamp;
 
-  const camId = `${ballFindData.holeNo}/${ballFindData.cameraNo}`;
+  switch (type) {
+    case 'findSaveRequest': {
+      const camId = `${data.holeNo}/${data.cameraNo}`;
 
-  if (!systemState.cameras[camId]) {
-    systemState.cameras[camId] = {
-      id: camId,
-      status: 'found',
-      lastActivity: null,
-      requestCount: 0,
-      successCount: 0,
-    };
-  }
+      if (!systemState.cameras[camId]) {
+        systemState.cameras[camId] = {
+          id: camId,
+          status: 'found',
+          lastActivity: null,
+          requestCount: 0,
+          successCount: 0,
+        };
+      }
 
-  const camera = systemState.cameras[camId];
-  camera.lastActivity = ballFindData.timestamp;
-  camera.requestCount++;
-  camera.successCount++;
-  camera.status = 'found';
-  
-  const logEntry = {
-    ...ballFindData,
-    cameraId: camId,
-    level: 'INFO',
-    raw: `Ball found for PlayID ${ballFindData.playId} on camera ${camId}`,
-  };
+      const camera = systemState.cameras[camId];
+      camera.lastActivity = data.timestamp;
+      camera.requestCount++;
+      camera.successCount++;
+      camera.status = 'found';
+      
+      const logEntry = {
+        ...data,
+        id: `${data.playId}-${data.timestamp}`, // Create a unique ID
+        cameraId: camId,
+        level: 'INFO',
+        raw: `Ball found for PlayID ${data.playId} on camera ${camId}`,
+      };
 
-  systemState.recentLogs.push(logEntry); // Add to the end of the array
-  if (systemState.recentLogs.length > 50) {
-    systemState.recentLogs.shift(); // Remove from the beginning (oldest)
+      systemState.recentLogs.push(logEntry);
+      if (systemState.recentLogs.length > 50) {
+        systemState.recentLogs.shift();
+      }
+      break;
+    }
+
+    case 'getMapImageRequest': {
+      systemState.mapImageRequests[data.playId] = {
+        ...data,
+        imagePath: null, // Initialize imagePath
+      };
+      // Clean up old requests to prevent memory leak
+      const requestKeys = Object.keys(systemState.mapImageRequests);
+      if (requestKeys.length > 100) {
+          delete systemState.mapImageRequests[requestKeys[0]]; // Delete the oldest entry
+      }
+      break;
+    }
+
+    case 'imagePath': {
+      if (systemState.mapImageRequests[data.playId]) {
+        systemState.mapImageRequests[data.playId].imagePath = data.path;
+      }
+      break;
+    }
+
+    default:
+      console.warn(`Unknown log type received: ${type}`);
+      return; // Do not broadcast if type is unknown
   }
   
   broadcastState();
@@ -170,6 +202,35 @@ app.get('/api/test', (req, res) => {
 
 app.get('/api/state', (req, res) => {
   res.json(systemState);
+});
+
+app.get('/api/open-folder', (req, res) => {
+    const { path } = req.query;
+    if (!path) {
+        return res.status(400).json({ error: 'Path is required' });
+    }
+
+    const decodedPath = decodeURIComponent(path);
+    
+    // Security check: Ensure the path is within the expected directory
+    const allowedBasePath = 'C:\\tomcat-8.5.82\\golfApp\\webapps\\images\\camera';
+    if (!decodedPath.startsWith(allowedBasePath)) {
+        return res.status(403).json({ error: 'Access to this path is forbidden.' });
+    }
+
+    // Replace with the correct command for your OS if not Windows
+    const command = `explorer.exe "${decodedPath}"`;
+
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Error opening folder: ${error.message}`);
+            return res.status(500).json({ error: 'Failed to open folder.', details: error.message });
+        }
+        if (stderr) {
+            console.warn(`Stderr while opening folder: ${stderr}`);
+        }
+        res.json({ message: `Successfully attempted to open folder: ${decodedPath}` });
+    });
 });
 
 

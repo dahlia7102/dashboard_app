@@ -46,6 +46,74 @@ function parseFindSaveRequestBlock(lines) {
 }
 
 
+function parseFindSaveRequestBlock(lines) {
+  const blockData = {};
+  lines.forEach(line => {
+    const parts = line.split(' : ');
+    if (parts.length === 2) {
+      const key = parts[0].trim();
+      const value = parts[1].trim();
+      blockData[key] = value;
+    }
+  });
+
+  if (blockData.MatchingResult === 'true') {
+    let serverName = 'N/A';
+    if (blockData.Message && blockData.Message.includes('리눅스:')) {
+      const match = blockData.Message.match(/리눅스: ([\w-]+)/);
+      if (match && match[1]) {
+        serverName = match[1];
+      }
+    }
+
+    return {
+      holeNo: blockData.HoleNo,
+      cameraNo: blockData.CameraNo,
+      kioskTyCode: blockData.KioskTyCode,
+      playId: blockData.PlayId,
+      matchingResult: blockData.MatchingResult,
+      coordinateX: blockData.CoordinateX,
+      coordinateY: blockData.CoordinateY,
+      message: blockData.Message,
+      server: serverName,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Parses a 'GetMapImageRequest' log block from an array of lines.
+ * @param {string[]} lines - The lines constituting the log block.
+ * @returns {object|null} A structured object with the parsed data.
+ */
+function parseGetMapImageRequestBlock(lines) {
+    const blockData = {};
+    lines.forEach(line => {
+        const parts = line.split(' : ');
+        if (parts.length === 2) {
+            const key = parts[0].trim().toLowerCase(); // Normalize keys
+            const value = parts[1].trim();
+            blockData[key] = value;
+        }
+    });
+
+    if (blockData.playid) {
+        return {
+            glcr: blockData.glcr,
+            golfCoursId: blockData.golfcoursid,
+            holeNo: blockData.holeno,
+            kioskTyCode: blockData.kiosktycode,
+            playId: blockData.playid,
+            timestamp: new Date().toISOString(),
+        };
+    }
+
+    return null;
+}
+
+
 /**
  * Starts watching the log file for changes and processes new entries.
  * @param {function(object): void} onNewLogData - Callback function to execute with the parsed log data.
@@ -55,8 +123,12 @@ function startLogWatcher(onNewLogData) {
     
     // State for multi-line block parsing
     let blockLines = [];
-    let isInsideBlock = false;
+    let currentBlockType = null; // Can be 'FindSaveRequest', 'GetMapImageRequest'
     let lastReadSize = 0;
+
+    // State for linking GetMapImageRequest with its path
+    let isExpectingImagePath = false;
+    let lastParsedGetMapImagePlayId = null;
 
     try {
         const stats = fs.statSync(logFilePath);
@@ -77,8 +149,10 @@ function startLogWatcher(onNewLogData) {
                 console.log(forceFullRead ? "Force full read." : "Log file truncated. Resetting read position.");
                 startByte = 0;
                 lastReadSize = 0;
-                isInsideBlock = false;
+                currentBlockType = null;
                 blockLines = [];
+                isExpectingImagePath = false;
+                lastParsedGetMapImagePlayId = null;
             }
             
             if (newSize > startByte) {
@@ -93,36 +167,73 @@ function startLogWatcher(onNewLogData) {
                     newLines.forEach(line => {
                         if (!line) return;
 
+                        // --- Block Detection ---
                         if (line.includes('////////////FindSaveRequest////////////')) {
-                            isInsideBlock = true;
-                            blockLines = []; // Start a new block
+                            currentBlockType = 'FindSaveRequest';
+                            blockLines = [];
+                            return;
+                        }
+                        
+                        if (line.includes('////////////GetMapImageRequest////////////')) {
+                            currentBlockType = 'GetMapImageRequest';
+                            blockLines = [];
                             return;
                         }
 
                         if (line.includes('///////////////////////////////////////')) {
-                            if (isInsideBlock) {
-                                isInsideBlock = false;
-                                const parsedBlock = parseFindSaveRequestBlock(blockLines);
-
-                                // If a block was successfully parsed, execute the callback
-                                if (parsedBlock) {
-                                    console.log("Ball Found event processed, calling back:", parsedBlock);
-                                    onNewLogData(parsedBlock);
+                            if (currentBlockType) {
+                                let parsedBlock = null;
+                                if (currentBlockType === 'FindSaveRequest') {
+                                    parsedBlock = parseFindSaveRequestBlock(blockLines);
+                                    if (parsedBlock) {
+                                        console.log("Ball Found event processed, calling back:", parsedBlock);
+                                        onNewLogData({ type: 'findSaveRequest', data: parsedBlock });
+                                    }
+                                } else if (currentBlockType === 'GetMapImageRequest') {
+                                    parsedBlock = parseGetMapImageRequestBlock(blockLines);
+                                    if (parsedBlock) {
+                                        console.log("GetMapImageRequest event processed, calling back:", parsedBlock);
+                                        onNewLogData({ type: 'getMapImageRequest', data: parsedBlock });
+                                        // Set state to look for the upcoming path
+                                        isExpectingImagePath = true;
+                                        lastParsedGetMapImagePlayId = parsedBlock.playId;
+                                    }
                                 }
+                                
                                 blockLines = [];
+                                currentBlockType = null;
                             }
                             return;
                         }
 
-                        if (isInsideBlock) {
+                        if (currentBlockType) {
                             blockLines.push(line);
+                        } 
+                        // --- Image Path Detection ---
+                        else if (isExpectingImagePath && line.includes('c.a.w.d.s.s.ImageService') && line.includes('C:\\')) {
+                            // This is the line with the path. Extract it.
+                            const pathMatch = line.match(/(C:\\\S+)/);
+                            if (pathMatch && pathMatch[1]) {
+                                const imagePath = pathMatch[1];
+                                console.log(`Found image path "${imagePath}" for PlayID ${lastParsedGetMapImagePlayId}`);
+                                onNewLogData({
+                                    type: 'imagePath',
+                                    data: {
+                                        playId: lastParsedGetMapImagePlayId,
+                                        path: imagePath,
+                                        timestamp: new Date().toISOString(),
+                                    }
+                                });
+                                // Reset the expectation state
+                                isExpectingImagePath = false;
+                                lastParsedGetMapImagePlayId = null;
+                            }
                         }
                     });
                     lastReadSize = newSize;
                 });
                 stream.on('error', (err) => {
                     console.error("Read stream error:", err);
-
                 });
             }
         } catch(error) {
