@@ -2,7 +2,7 @@ const http = require('http');
 const net = require('net'); // Added for TCP checks
 
 // Configurable constants
-const HEALTH_CHECK_INTERVAL = 10000; // 10 seconds (changed from 300000)
+const HEALTH_CHECK_INTERVAL = 300000; // 5 minutes (changed from 10000)
 const HEALTH_CHECK_TIMEOUT = 5000; // 5 seconds
 
 // List of Linux analysis servers from nginx.conf
