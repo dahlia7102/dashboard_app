@@ -15,3 +15,51 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Custom scrollbar for Webkit browsers */
+::-webkit-scrollbar {
+  width: 8px; /* Width of the scrollbar */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; /* Make track transparent */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #4a5568; /* A dark gray (Tailwind's gray-700) for the thumb */
+  border-radius: 4px; /* Rounded corners */
+  border: 1px solid #2d3748; /* Even darker border (Tailwind's gray-800) */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #718096; /* Lighter gray on hover (Tailwind's gray-600) */
+}
+
+/* Glow Pulse Animations */
+@keyframes glow-green {
+  0%, 100% { box-shadow: 0 0 2px #059669; border-color: #059669; }
+  50% { box-shadow: 0 0 10px 2px #6ee7b7; border-color: #6ee7b7; }
+}
+
+@keyframes glow-red {
+  0%, 100% { box-shadow: 0 0 4px #dc2626; border-color: #dc2626; }
+  50% { box-shadow: 0 0 12px 3px #f87171; border-color: #f87171; }
+}
+
+@keyframes glow-yellow {
+  0%, 100% { box-shadow: 0 0 4px #d97706; border-color: #d97706; }
+  50% { box-shadow: 0 0 12px 3px #fbbF77; border-color: #fbbF77; }
+}
+
+.glow-pulse-red {
+  animation: glow-red 1.5s infinite;
+}
+
+.glow-pulse-yellow {
+  animation: glow-yellow 2s infinite;
+}
+
+/* This is for a transient effect, so it runs once and lasts 2 seconds */
+.glow-pulse-green {
+  animation: glow-green 2s ease-out;
+}
