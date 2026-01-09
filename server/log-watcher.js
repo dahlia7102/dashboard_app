@@ -19,6 +19,15 @@ function parseFindSaveRequestBlock(lines) {
 
   // Only proceed if the log block indicates a successful match.
   if (blockData.MatchingResult === 'true') {
+    let serverName = 'N/A'; // Default server name
+    if (blockData.Message && blockData.Message.includes('리눅스:')) {
+      // Extracts the server name, e.g., "LAPTOP-GUD7CGGO" from "리눅스: LAPTOP-GUD7CGGO, ..."
+      const match = blockData.Message.match(/리눅스: ([\w-]+)/);
+      if (match && match[1]) {
+        serverName = match[1];
+      }
+    }
+
     return {
       holeNo: blockData.HoleNo,
       cameraNo: blockData.CameraNo,
@@ -28,6 +37,7 @@ function parseFindSaveRequestBlock(lines) {
       coordinateX: blockData.CoordinateX,
       coordinateY: blockData.CoordinateY,
       message: blockData.Message,
+      server: serverName, // Add the extracted server name
       timestamp: new Date().toISOString(), // Add a current timestamp for the event.
     };
   }
