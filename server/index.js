@@ -14,6 +14,7 @@ const { exec } = require('child_process');
 // --- Custom Modules ---
 const { startLogWatcher } = require('./log-watcher.js');
 const { startHealthChecks, linuxServers } = require('./health-checker.js'); // Import linuxServers
+const { startCameraHealthChecks } = require('./camera-health.js'); // Add camera health checker
 
 // --- Server and State Setup ---
 const app = express();
@@ -37,6 +38,7 @@ const systemState = {
   cameras: {},
   recentLogs: [],
   mapImageRequests: {}, // Store GetMapImageRequest data, keyed by playId
+  holeCameraStatus: {}, // Store aggregated camera health per hole
 };
 
 // --- WebSocket Management ---
@@ -265,4 +267,8 @@ console.log(`WebSocket server integrated with HTTP server on port ${port}`);
 // --- Start Background Services ---
 startLogWatcher(updateStateFromLog);
 startHealthChecks(updateHttpHealthStatus, updateLinuxHealthStatus); // Pass both callbacks
+startCameraHealthChecks((cameraResults) => {
+    systemState.holeCameraStatus = cameraResults;
+    broadcastState();
+});
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Activity, AlertTriangle, CheckCircle, XCircle, Server, Eye, FolderOutput } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Server, Eye, FolderOutput, Camera } from 'lucide-react';
 import axios from 'axios';
 
 const MonitoringDashboard = () => {
@@ -7,6 +7,7 @@ const MonitoringDashboard = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [selectedServer, setSelectedServer] = useState(null);
+  const [selectedHole, setSelectedHole] = useState(null);
   const [activityData, setActivityData] = useState({});
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 
@@ -50,7 +51,7 @@ const MonitoringDashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const { global = {}, recentLogs = [], mapImageRequests = {} } = dashboardState;
+  const { global = {}, recentLogs = [], mapImageRequests = {}, holeCameraStatus = {} } = dashboardState;
   const { linuxServerDetails: servers = [], windowServerStatus, nginxStatus } = global;
 
   const detailsForModal = useMemo(() => {
@@ -133,15 +134,28 @@ const MonitoringDashboard = () => {
   const linuxStatusIndicator = { name: 'Linux', status: linuxOverallStatus };
 
   const statusCounts = useMemo(() => ({
-    normal: servers.filter(s => s.status === 'active').length + (windowsServer.status === 'active' ? 1 : 0) + (nginxServer.status === 'active' ? 1 : 0),
-    warning: servers.filter(s => s.status === 'warning').length + (windowsServer.status === 'warning' ? 1 : 0) + (nginxServer.status === 'warning' ? 1 : 0),
-    error: servers.filter(s => s.status === 'error').length + (windowsServer.status === 'error' ? 1 : 0) + (nginxServer.status === 'error' ? 1 : 0),
-    unknown: servers.filter(s => s.status === 'unknown').length + (windowsServer.status === 'unknown' ? 1 : 0) + (nginxServer.status === 'unknown' ? 1 : 0),
+    normal: servers.filter(s => s.status === 'active').length + (windowServerStatus === 'active' ? 1 : 0) + (nginxStatus === 'active' ? 1 : 0),
+    warning: servers.filter(s => s.status === 'warning').length + (windowServerStatus === 'warning' ? 1 : 0) + (nginxStatus === 'warning' ? 1 : 0),
+    error: servers.filter(s => s.status === 'error').length + (windowServerStatus === 'error' ? 1 : 0) + (nginxStatus === 'error' ? 1 : 0),
+    unknown: servers.filter(s => s.status === 'unknown').length + (windowServerStatus === 'unknown' ? 1 : 0) + (nginxStatus === 'unknown' ? 1 : 0),
   }), [servers, windowServerStatus, nginxStatus]);
 
   const getStatusColor = (status) => ({ 'active': 'bg-green-500', 'warning': 'bg-yellow-500', 'error': 'bg-red-500' }[status] || 'bg-gray-500');
   const getStatusIcon = (status) => ({ 'active': <CheckCircle className="w-5 h-5" />, 'warning': <AlertTriangle className="w-5 h-5" />, 'error': <XCircle className="w-5 h-5" /> }[status] || null);
   const getLevelColor = (level) => ({ 'critical': 'text-red-500', 'error': 'text-red-400', 'warning': 'text-yellow-400' }[level] || 'text-blue-400');
+
+  const targetHoles = [1, 3, 4, 5, 7, 8, 9];
+  const getHoleStatus = (holeNo) => {
+    if (!holeCameraStatus || !holeCameraStatus[holeNo]) return 'unknown';
+    return holeCameraStatus[holeNo].status;
+  };
+
+  const getCameraStatus = (holeNo, cameraNo) => {
+    if (!holeCameraStatus || !holeCameraStatus[holeNo]) return 'unknown';
+    const holeData = holeCameraStatus[holeNo];
+    const cam = holeData.detail.find(c => parseInt(c.cameraNo) === cameraNo);
+    return cam ? (cam.isActive ? 'active' : 'error') : 'unknown';
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
@@ -156,23 +170,55 @@ const MonitoringDashboard = () => {
             </div>
           </div>
           <div className="flex items-center justify-between gap-4 mt-4">
-            <div className="flex gap-2">
-              {[windowsServer, nginxServer, linuxStatusIndicator].map(s => (
-                <div key={s.name} className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer hover:scale-105 transition-transform ${s.status === 'active' ? 'bg-green-950 border-green-700' : s.status === 'warning' ? 'bg-yellow-950 border-yellow-700' : 'bg-red-950 border-red-700'}`} title={`${s.name} 서버 상태`}>
-                  <div className={`w-2.5 h-2.5 rounded-full ${s.status === 'active' ? 'bg-green-500' : s.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'} animate-pulse`}></div>
-                  <span className="text-xs font-semibold text-white">{s.name}</span>
-                </div>
-              ))}
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2">
+                {[windowsServer, nginxServer, linuxStatusIndicator].map(s => (
+                  <div key={s.name} className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer hover:scale-105 transition-transform ${s.status === 'active' ? 'bg-green-950 border-green-700' : s.status === 'warning' ? 'bg-yellow-950 border-yellow-700' : 'bg-red-950 border-red-700'}`} title={`${s.name} 서버 상태`}>
+                    <div className={`w-2.5 h-2.5 rounded-full ${s.status === 'active' ? 'bg-green-500' : s.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'} animate-pulse`}></div>
+                    <span className="text-xs font-semibold text-white">{s.name}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {targetHoles.map(hole => {
+                  const status = getHoleStatus(hole);
+                  const holeLabel = `${String(hole).padStart(2, '0')}-Hole-cam`;
+                  const activeCount = holeCameraStatus[hole]?.active || 0;
+                  const totalCount = holeCameraStatus[hole]?.total || 0;
+
+                  return (
+                    <div 
+                      key={hole} 
+                      onClick={() => setSelectedHole(hole)}
+                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded border transition-all cursor-pointer hover:scale-105 ${
+                        status === 'active' ? 'bg-green-950 border-green-700 shadow-[0_0_10px_rgba(34,197,94,0.15)]' : 
+                        status === 'warning' ? 'bg-yellow-950 border-yellow-700 shadow-[0_0_10px_rgba(234,179,8,0.15)]' : 
+                        status === 'error' ? 'bg-red-950 border-red-700 shadow-[0_0_10px_rgba(239,68,68,0.15)]' : 
+                        'bg-gray-900 border-gray-700 opacity-60'
+                      }`} 
+                      title={`${holeLabel} (${activeCount}/${totalCount}) 상세 보기`}
+                    >
+                      <div className={`w-2 h-2 rounded-full ${
+                        status === 'active' ? 'bg-green-500 animate-pulse' : 
+                        status === 'warning' ? 'bg-yellow-500 animate-pulse' : 
+                        status === 'error' ? 'bg-red-500 animate-pulse' : 
+                        'bg-gray-600'
+                      }`}></div>
+                      <span className="text-[10px] font-semibold text-white">{holeLabel}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             <div className="flex gap-3">
-              <div className="bg-green-950 border border-green-800 rounded-lg px-4 py-2.5 w-[400px]">
-                <div className="flex items-center gap-3"><CheckCircle className="w-6 h-6 text-green-500 flex-shrink-0" /><div><div className="text-green-400 text-xs">Normal</div><div className="text-2xl font-bold text-white">{statusCounts.normal}</div></div></div>
+              <div className="bg-green-950 border border-green-800 rounded-lg px-3 py-1.5 w-[200px]">
+                <div className="flex items-center gap-2"><CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" /><div><div className="text-green-400 text-[10px]">Normal</div><div className="text-xl font-bold text-white">{statusCounts.normal}</div></div></div>
               </div>
-              <div className="bg-yellow-950 border border-yellow-800 rounded-lg px-4 py-2.5 w-[400px]">
-                <div className="flex items-center gap-3"><AlertTriangle className="w-6 h-6 text-yellow-500 flex-shrink-0" /><div><div className="text-yellow-400 text-xs">Warning</div><div className="text-2xl font-bold text-white">{statusCounts.warning}</div></div></div>
+              <div className="bg-yellow-950 border border-yellow-800 rounded-lg px-3 py-1.5 w-[200px]">
+                <div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" /><div><div className="text-yellow-400 text-[10px]">Warning</div><div className="text-xl font-bold text-white">{statusCounts.warning}</div></div></div>
               </div>
-              <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-2.5 w-[400px]">
-                <div className="flex items-center gap-3"><XCircle className="w-6 h-6 text-red-500 flex-shrink-0" /><div><div className="text-red-400 text-xs">Error</div><div className="text-2xl font-bold text-white">{statusCounts.error}</div></div></div>
+              <div className="bg-red-950 border border-red-800 rounded-lg px-3 py-1.5 w-[200px]">
+                <div className="flex items-center gap-2"><XCircle className="w-5 h-5 text-red-500 flex-shrink-0" /><div><div className="text-red-400 text-[10px]">Error</div><div className="text-xl font-bold text-white">{statusCounts.error}</div></div></div>
               </div>
             </div>
           </div>
@@ -203,6 +249,46 @@ const MonitoringDashboard = () => {
         </section>
       </main>
 
+      {/* 홀 세부 카메라 모달 */}
+      {selectedHole && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={() => setSelectedHole(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Camera className="w-6 h-6 text-blue-400" />
+                {String(selectedHole).padStart(2, '0')}번 홀 카메라 세부 상태
+              </h3>
+              <button onClick={() => setSelectedHole(null)} className="text-gray-400 hover:text-white transition-colors">
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              {[...Array(15)].map((_, i) => {
+                const cameraNo = i + 1;
+                const status = getCameraStatus(selectedHole, cameraNo);
+                return (
+                  <div key={cameraNo} className={`flex flex-col items-center gap-2 p-4 rounded-lg border transition-all ${status === 'active' ? 'bg-green-900/20 border-green-700/50 shadow-[0_0_10px_rgba(34,197,94,0.1)]' : status === 'error' ? 'bg-red-900/20 border-red-700/50' : 'bg-gray-800/40 border-gray-700/50'}`}>
+                    <span className="text-xs font-mono text-gray-400">CAM {String(cameraNo).padStart(2, '0')}</span>
+                    <div className={`w-3 h-3 rounded-full ${status === 'active' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse' : status === 'error' ? 'bg-red-500' : 'bg-gray-600'}`}></div>
+                    <span className={`text-[10px] font-bold ${status === 'active' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
+                      {status === 'active' ? 'ACTIVE' : status === 'error' ? 'OFFLINE' : 'UNKNOWN'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 flex justify-end">
+              <button onClick={() => setSelectedHole(null)} className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm font-semibold">
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 서버 상세 정보 모달 */}
       {selectedServer && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setSelectedServer(null)}>
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-4xl w-full mx-4 h-[48rem] flex flex-col" onClick={e => e.stopPropagation()}>
